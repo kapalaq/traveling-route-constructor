@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - Budget App{% endblock %}
+
+{% block content %}
+<div class="profile-container">
+    <div class="profile-card">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                <svg width="80" height="80" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 16.6863 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <h1>User Profile</h1>
+            <p class="profile-subtitle">Placeholder for future implementation</p>
+        </div>
+        
+        <div class="profile-info">
+            <div class="info-section">
+                <h3>Coming Soon</h3>
+                <p>Profile features will be implemented in a future update:</p>
+                <ul class="feature-list">
+                    <li>Personal information</li>
+                    <li>Settings and preferences</li>
+                    <li>Account management</li>
+                    <li>Notifications</li>
+                    <li>Export data</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="profile-actions">
+            <button class="btn btn-primary" onclick="window.location.href='/'">
+                Back to Dashboard
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

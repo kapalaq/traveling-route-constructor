@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Budget App{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Clash+Display:wght@400;500;600;700&family=General+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Side Menu -->
+    <div id="sideMenu" class="side-menu">
+        <div class="menu-header">
+            <h2>Wallets</h2>
+            <button class="close-menu" onclick="toggleMenu()">×</button>
+        </div>
+        <div class="wallet-list" id="walletList">
+            <!-- Wallets will be loaded here -->
+        </div>
+        <button class="add-wallet-btn" onclick="showAddWalletModal()">
+            <span class="plus-icon">+</span> Add Wallet
+        </button>
+    </div>
+
+    <!-- Overlay -->
+    <div id="overlay" class="overlay" onclick="closeAllModals()"></div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header>
+            <button class="menu-toggle" onclick="toggleMenu()">
+                <div class="hamburger"></div>
+                <div class="hamburger"></div>
+                <div class="hamburger"></div>
+            </button>
+            <h1>Budget Accounting</h1>
+            <button class="profile-btn" onclick="window.location.href='/profile'">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/>
+                    <path d="M4 20C4 16.6863 6.68629 14 10 14H14C17.3137 14 20 16.6863 20 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </header>
+
+        {% block content %}{% endblock %}
+
+        <!-- Floating Action Buttons -->
+        <div class="fab-container">
+            <button class="fab fab-add" onclick="showOperationModal('addition')" title="Add Money">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <button class="fab fab-withdraw" onclick="showOperationModal('withdrawal')" title="Withdraw Money">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 12H19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Wallet Modal -->
+    <div id="addWalletModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Wallet</h2>
+                <button class="close-modal" onclick="closeAddWalletModal()">×</button>
+            </div>
+            <form id="addWalletForm" onsubmit="handleAddWallet(event)">
+                <div class="form-group">
+                    <label>Wallet Name *</label>
+                    <input type="text" name="name" required maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label>Wallet Type *</label>
+                    <select name="wallet_type" required onchange="handleWalletTypeChange(this.value)">
+                        <option value="simple">Simple Wallet</option>
+                        <option value="deposit">Deposit</option>
+                        <option value="stock">Stock Wallet</option>
+                    </select>
+                </div>
+                <div class="form-group" id="interestRateGroup" style="display: none;">
+                    <label>Annual Interest Rate (%) *</label>
+                    <input type="number" name="interest_rate" step="0.01" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" maxlength="500" rows="3"></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddWalletModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Wallet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Operation Modal -->
+    <div id="operationModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="operationModalTitle">Add Money</h2>
+                <button class="close-modal" onclick="closeOperationModal()">×</button>
+            </div>
+            <form id="operationForm" onsubmit="handleOperation(event)">
+                <input type="hidden" name="operation_type" id="operationType">
+                <input type="hidden" name="wallet_id" id="operationWalletId">
+
+                <div class="form-group">
+                    <label>Amount (KZT) *</label>
+                    <input type="number" name="amount" step="0.01" min="0.01" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Category *</label>
+                    <select name="category" required>
+                        <option value="salary">Salary</option>
+                        <option value="food">Food</option>
+                        <option value="healthcare">Healthcare</option>
+                        <option value="home">Home</option>
+                        <option value="education">Education</option>
+                        <option value="subscriptions">Subscriptions</option>
+                        <option value="entertainment">Entertainment</option>
+                        <option value="restaurants">Restaurants</option>
+                        <option value="transport">Transport</option>
+                        <option value="shopping">Shopping</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="targetWalletGroup" style="display: none;">
+                    <label>Transfer to Wallet *</label>
+                    <select name="target_wallet_id" id="targetWalletSelect">
+                        <!-- Will be populated dynamically -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Date & Time</label>
+                    <input type="datetime-local" name="operation_time" id="operationTime">
+                </div>
+
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea name="description" maxlength="500" rows="2"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="transferCheckbox" onchange="toggleTransferMode(this.checked)">
+                        Transfer to another wallet
+                    </label>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeOperationModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="operationSubmitBtn">Add</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
