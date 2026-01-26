@@ -237,11 +237,15 @@ class Wallet:
         """Return the number of transactions."""
         return len(self.__transactions)
 
+    def delete(self):
+        """Pre-Destructor of a wallet."""
+        transactions = list(self.__transactions.values())
+        for transaction in transactions:
+            self.delete_transaction(transaction.id)
+
     def __del__(self):
         """Destructor of a wallet."""
-        for transaction in self.__transactions.values():
-            self.delete_transaction(transaction.id)
-        del self.__transactions
+        self.delete()
 
 
 class DepositWallet(Wallet):

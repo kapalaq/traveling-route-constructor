@@ -75,7 +75,7 @@ class WalletManager:
             else:
                 self._current_wallet = None
 
-        del wallet_to_delete
+        wallet_to_delete.delete()
         return True
 
     def update_wallet(self, old_name: str, new_name: str = None,
