@@ -9,6 +9,7 @@ from collections import defaultdict
 from models.transaction import Transaction, Transfer, TransactionType
 from models.category import CategoryManager
 from strategies.sorting import SortingContext
+from strategies.filtering import FilteringContext
 
 
 class WalletType(Enum):
@@ -43,6 +44,7 @@ class Wallet:
         self.__transactions: Dict[str, Transaction] = {}
         self.__category_manager = None
         self.__sorting_context = SortingContext()
+        self.__filtering_context = FilteringContext()
 
         # Optional
         self.description = description
@@ -65,6 +67,10 @@ class Wallet:
     @property
     def sorting_context(self) -> SortingContext:
         return self.__sorting_context
+
+    @property
+    def filtering_context(self) -> FilteringContext:
+        return self.__filtering_context
 
     def assign_category_manager(self, category_manager: CategoryManager):
         """Function to assign category manager."""
@@ -175,6 +181,12 @@ class Wallet:
     def get_sorted_transactions(self) -> List[Transaction]:
         """Get all transactions sorted by current strategy."""
         return self.__sorting_context.sort(self.__transactions.values())
+
+    def get_filtered_transactions(self) -> List[Transaction]:
+        """Get transactions filtered and sorted by current strategies."""
+        transactions = list(self.__transactions.values())
+        filtered = self.__filtering_context.filter(transactions)
+        return self.__sorting_context.sort(filtered)
     
     def get_category_totals(self) -> Dict[str, float]:
         """Get total amount per category (only non-zero)."""

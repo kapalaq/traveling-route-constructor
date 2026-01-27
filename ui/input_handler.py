@@ -4,6 +4,26 @@ from typing import Optional, Tuple, Set, Dict, List, TYPE_CHECKING
 from models.transaction import Transaction, TransactionType
 from ui.display import Display
 from wallet.wallet import Wallet, WalletType
+from strategies.filtering import (
+    FilterStrategy,
+    FilteringContext,
+    TodayFilter,
+    LastWeekFilter,
+    LastMonthFilter,
+    ThisMonthFilter,
+    LastYearFilter,
+    ThisYearFilter,
+    DateRangeFilter,
+    IncomeOnlyFilter,
+    ExpenseOnlyFilter,
+    TransferOnlyFilter,
+    NoTransfersFilter,
+    CategoryFilter,
+    AmountRangeFilter,
+    LargeTransactionsFilter,
+    SmallTransactionsFilter,
+    DescriptionFilter,
+)
 
 if TYPE_CHECKING:
     from wallet.wallet_manager import WalletManager
@@ -453,3 +473,250 @@ class InputHandler:
             "description": description,
             "datetime_created": date,
         }
+
+    # ============= Filter Input Methods =============
+
+    @staticmethod
+    def get_date_filter() -> Optional[FilterStrategy]:
+        """Get a date filter from user selection."""
+        Display.show_date_filter_options()
+        choice = input("Select option: ").strip()
+
+        if choice == "0":
+            return None
+        elif choice == "1":
+            return TodayFilter()
+        elif choice == "2":
+            return LastWeekFilter()
+        elif choice == "3":
+            return LastMonthFilter()
+        elif choice == "4":
+            return ThisMonthFilter()
+        elif choice == "5":
+            return LastYearFilter()
+        elif choice == "6":
+            return ThisYearFilter()
+        elif choice == "7":
+            # Custom date range
+            return InputHandler.get_custom_date_range()
+        else:
+            Display.show_error("Invalid option")
+            return None
+
+    @staticmethod
+    def get_custom_date_range() -> Optional[FilterStrategy]:
+        """Get a custom date range from user."""
+        print("\nEnter date range (YYYY-MM-DD format):")
+        print("Press Enter to leave a bound open")
+
+        start_str = input("Start date (or Enter for no start): ").strip()
+        end_str = input("End date (or Enter for no end): ").strip()
+
+        start_date = None
+        end_date = None
+
+        if start_str:
+            try:
+                start_date = datetime.strptime(start_str, "%Y-%m-%d")
+            except ValueError:
+                Display.show_error("Invalid start date format")
+                return None
+
+        if end_str:
+            try:
+                end_date = datetime.strptime(end_str, "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59
+                )
+            except ValueError:
+                Display.show_error("Invalid end date format")
+                return None
+
+        if not start_date and not end_date:
+            Display.show_info("No date range specified")
+            return None
+
+        return DateRangeFilter(start_date=start_date, end_date=end_date)
+
+    @staticmethod
+    def get_type_filter() -> Optional[FilterStrategy]:
+        """Get a transaction type filter from user selection."""
+        Display.show_type_filter_options()
+        choice = input("Select option: ").strip()
+
+        if choice == "0":
+            return None
+        elif choice == "1":
+            include_transfers = InputHandler.confirm("Include incoming transfers?")
+            return IncomeOnlyFilter(include_transfers=include_transfers)
+        elif choice == "2":
+            include_transfers = InputHandler.confirm("Include outgoing transfers?")
+            return ExpenseOnlyFilter(include_transfers=include_transfers)
+        elif choice == "3":
+            return TransferOnlyFilter()
+        elif choice == "4":
+            return NoTransfersFilter()
+        else:
+            Display.show_error("Invalid option")
+            return None
+
+    @staticmethod
+    def get_category_filter(available_categories: Set[str]) -> Optional[FilterStrategy]:
+        """Get a category filter from user."""
+        if not available_categories:
+            Display.show_error("No categories available")
+            return None
+
+        print("\n📁 Filter Mode:")
+        print("   1. Include only selected categories")
+        print("   2. Exclude selected categories")
+        print("   0. Cancel")
+
+        mode_choice = input("Select mode: ").strip()
+        if mode_choice == "0":
+            return None
+        elif mode_choice == "1":
+            mode = "include"
+        elif mode_choice == "2":
+            mode = "exclude"
+        else:
+            Display.show_error("Invalid option")
+            return None
+
+        # Show available categories
+        sorted_categories = sorted(available_categories)
+        print("\n📁 Available Categories:")
+        for i, cat in enumerate(sorted_categories, 1):
+            print(f"   {i}. {cat}")
+
+        print("\nEnter category numbers separated by commas (e.g., 1,3,5):")
+        selection = input("Selection: ").strip()
+
+        if not selection:
+            Display.show_info("No categories selected")
+            return None
+
+        selected_categories = set()
+        try:
+            indices = [int(x.strip()) for x in selection.split(",")]
+            for idx in indices:
+                if 1 <= idx <= len(sorted_categories):
+                    selected_categories.add(sorted_categories[idx - 1])
+                else:
+                    Display.show_error(f"Invalid index: {idx}")
+                    return None
+        except ValueError:
+            Display.show_error("Invalid input. Use numbers separated by commas.")
+            return None
+
+        if not selected_categories:
+            Display.show_info("No valid categories selected")
+            return None
+
+        return CategoryFilter(categories=selected_categories, mode=mode)
+
+    @staticmethod
+    def get_amount_filter() -> Optional[FilterStrategy]:
+        """Get an amount filter from user selection."""
+        Display.show_amount_filter_options()
+        choice = input("Select option: ").strip()
+
+        if choice == "0":
+            return None
+        elif choice == "1":
+            threshold = input("Enter minimum amount (default 10000): ").strip()
+            try:
+                threshold = float(threshold) if threshold else 10000
+                return LargeTransactionsFilter(threshold=threshold)
+            except ValueError:
+                Display.show_error("Invalid amount")
+                return None
+        elif choice == "2":
+            threshold = input("Enter maximum amount (default 100): ").strip()
+            try:
+                threshold = float(threshold) if threshold else 100
+                return SmallTransactionsFilter(threshold=threshold)
+            except ValueError:
+                Display.show_error("Invalid amount")
+                return None
+        elif choice == "3":
+            return InputHandler.get_custom_amount_range()
+        else:
+            Display.show_error("Invalid option")
+            return None
+
+    @staticmethod
+    def get_custom_amount_range() -> Optional[FilterStrategy]:
+        """Get a custom amount range from user."""
+        print("\nEnter amount range:")
+        print("Press Enter to leave a bound open")
+
+        min_str = input("Minimum amount (or Enter for no minimum): ").strip()
+        max_str = input("Maximum amount (or Enter for no maximum): ").strip()
+
+        min_amount = None
+        max_amount = None
+
+        if min_str:
+            try:
+                min_amount = float(min_str)
+                if min_amount < 0:
+                    Display.show_error("Amount cannot be negative")
+                    return None
+            except ValueError:
+                Display.show_error("Invalid minimum amount")
+                return None
+
+        if max_str:
+            try:
+                max_amount = float(max_str)
+                if max_amount < 0:
+                    Display.show_error("Amount cannot be negative")
+                    return None
+            except ValueError:
+                Display.show_error("Invalid maximum amount")
+                return None
+
+        if min_amount and max_amount and min_amount > max_amount:
+            Display.show_error("Minimum cannot be greater than maximum")
+            return None
+
+        if min_amount is None and max_amount is None:
+            Display.show_info("No amount range specified")
+            return None
+
+        return AmountRangeFilter(min_amount=min_amount, max_amount=max_amount)
+
+    @staticmethod
+    def get_description_filter() -> Optional[FilterStrategy]:
+        """Get a description search filter from user."""
+        search_term = input("Enter search term: ").strip()
+
+        if not search_term:
+            Display.show_info("No search term provided")
+            return None
+
+        case_sensitive = InputHandler.confirm("Case sensitive search?")
+        return DescriptionFilter(search_term=search_term, case_sensitive=case_sensitive)
+
+    @staticmethod
+    def get_filter_to_remove(wallet: Wallet) -> Optional[int]:
+        """Get the index of a filter to remove."""
+        filters = wallet.filtering_context.active_filters
+        if not filters:
+            Display.show_info("No active filters to remove")
+            return None
+
+        Display.show_active_filters(wallet)
+        choice = input("Enter filter number to remove (0 to cancel): ").strip()
+
+        try:
+            idx = int(choice)
+            if idx == 0:
+                return None
+            if 1 <= idx <= len(filters):
+                return idx - 1  # Convert to 0-based index
+            Display.show_error("Invalid filter number")
+            return None
+        except ValueError:
+            Display.show_error("Invalid input")
+            return None

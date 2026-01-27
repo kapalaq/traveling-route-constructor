@@ -232,6 +232,86 @@ class ChangeSortingCommand(Command):
         return True
 
 
+class FilterCommand(Command):
+    """Command to manage transaction filters."""
+
+    def __init__(self, wallet_manager: "WalletManager"):
+        self._wallet_manager = wallet_manager
+
+    def execute(self) -> bool:
+        wallet = self._wallet_manager.current_wallet
+        if not wallet:
+            Display.show_error("No wallet selected.")
+            return True
+
+        Display.show_filter_menu()
+        choice = input("Select option: ").strip()
+
+        if choice == "0":
+            return True
+        elif choice == "1":
+            # Date filter
+            filter_obj = InputHandler.get_date_filter()
+            if filter_obj:
+                wallet.filtering_context.add_filter(filter_obj)
+                Display.show_success(f"Added filter: {filter_obj.name}")
+        elif choice == "2":
+            # Transaction type filter
+            filter_obj = InputHandler.get_type_filter()
+            if filter_obj:
+                wallet.filtering_context.add_filter(filter_obj)
+                Display.show_success(f"Added filter: {filter_obj.name}")
+        elif choice == "3":
+            # Category filter
+            all_categories = set()
+            income_cats = wallet.category_manager.get_categories(TransactionType.INCOME)
+            expense_cats = wallet.category_manager.get_categories(TransactionType.EXPENSE)
+            all_categories.update(income_cats)
+            all_categories.update(expense_cats)
+            all_categories.add("Transfer")
+
+            filter_obj = InputHandler.get_category_filter(all_categories)
+            if filter_obj:
+                wallet.filtering_context.add_filter(filter_obj)
+                Display.show_success(f"Added filter: {filter_obj.name}")
+        elif choice == "4":
+            # Amount filter
+            filter_obj = InputHandler.get_amount_filter()
+            if filter_obj:
+                wallet.filtering_context.add_filter(filter_obj)
+                Display.show_success(f"Added filter: {filter_obj.name}")
+        elif choice == "5":
+            # Description filter
+            filter_obj = InputHandler.get_description_filter()
+            if filter_obj:
+                wallet.filtering_context.add_filter(filter_obj)
+                Display.show_success(f"Added filter: {filter_obj.name}")
+        elif choice == "6":
+            # View active filters
+            Display.show_active_filters(wallet)
+        elif choice == "7":
+            # Remove a filter
+            idx = InputHandler.get_filter_to_remove(wallet)
+            if idx is not None:
+                if wallet.filtering_context.remove_filter(idx):
+                    Display.show_success("Filter removed")
+                else:
+                    Display.show_error("Failed to remove filter")
+        elif choice == "8":
+            # Clear all filters
+            if InputHandler.confirm("Clear all filters?"):
+                wallet.filtering_context.clear_filters()
+                Display.show_success("All filters cleared")
+        else:
+            Display.show_error("Invalid option")
+
+        # Show transactions with updated filters
+        if choice in ("1", "2", "3", "4", "5", "7", "8"):
+            Display.show_transactions(wallet)
+
+        return True
+
+
 class ShowPercentagesCommand(Command):
     """Command to show category percentages."""
 
@@ -244,14 +324,31 @@ class ShowPercentagesCommand(Command):
             Display.show_error("No wallet selected.")
             return True
 
-        income_pct = wallet.get_income_percentages()
-        expense_pct = wallet.get_expense_percentages()
+        # Use filtered transactions if filters are active
+        has_filters = wallet.filtering_context.has_filters
+        if has_filters:
+            transactions = wallet.get_filtered_transactions()
+            breakdown = Display._calculate_category_breakdown(transactions)
+            income_pct = breakdown["income_pct"]
+            expense_pct = breakdown["expense_pct"]
+        else:
+            income_pct = wallet.get_income_percentages()
+            expense_pct = wallet.get_expense_percentages()
 
         if not income_pct and not expense_pct:
-            Display.show_info("No transactions to calculate percentages")
+            if has_filters:
+                Display.show_info("No transactions match current filters")
+            else:
+                Display.show_info("No transactions to calculate percentages")
             return True
 
-        Display.show_header("Category Percentages")
+        header = "Category Percentages"
+        if has_filters:
+            header += " [FILTERED]"
+            Display.show_header(header)
+            print(f"🔍 Filters: {wallet.filtering_context.filter_summary}")
+        else:
+            Display.show_header(header)
 
         if income_pct:
             print("\n📈 Income:")
@@ -486,6 +583,8 @@ class CommandFactory:
             return TransferCommand(self._wallet_manager)
         elif command_str_lower == "sort":
             return ChangeSortingCommand(self._wallet_manager)
+        elif command_str_lower == "filter":
+            return FilterCommand(self._wallet_manager)
         elif command_str_lower == "percent":
             return ShowPercentagesCommand(self._wallet_manager)
         elif command_str_lower == "help":

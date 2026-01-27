@@ -1,11 +1,13 @@
 """Display utilities for the budget planner."""
+from collections import defaultdict
 from typing import List, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from wallet.wallet_manager import WalletManager
-from models.transaction import Transaction
+from models.transaction import Transaction, TransactionType
 from wallet.wallet import Wallet, DepositWallet, WalletType
 from strategies.sorting import SortingContext, WalletSortingContext
+from strategies.filtering import FilteringContext
 
 
 class Display:
@@ -26,21 +28,124 @@ class Display:
         print(Display.SEPARATOR)
     
     @staticmethod
-    def show_balance(wallet: Wallet):
-        """Display the total balance with income/expense breakdown."""
-        balance = wallet.balance
-        sign = "+" if balance >= 0 else ""
-        print(f"\n💰 Balance: {sign}{balance:.2f} {wallet.currency}")
-        print(f"   Income:  +{wallet.total_income:.2f}")
-        print(f"   Expense: -{wallet.total_expense:.2f}")
+    def _calculate_totals(transactions: List[Transaction]) -> Dict:
+        """Calculate totals from a list of transactions."""
+        total_income = 0.0
+        total_expense = 0.0
+        for t in transactions:
+            if t.transaction_type == TransactionType.INCOME:
+                total_income += t.amount
+            else:
+                total_expense += t.amount
+        balance = total_income - total_expense
+        return {
+            "balance": balance,
+            "total_income": total_income,
+            "total_expense": total_expense,
+        }
 
     @staticmethod
-    def show_category_breakdown(wallet: Wallet):
-        """Display category contributions for income and expenses separately."""
-        income_by_cat = wallet.get_income_by_category()
-        expense_by_cat = wallet.get_expense_by_category()
-        income_pct = wallet.get_income_percentages()
-        expense_pct = wallet.get_expense_percentages()
+    def _calculate_category_breakdown(
+        transactions: List[Transaction],
+    ) -> Dict:
+        """Calculate category breakdown from a list of transactions."""
+        income_by_cat: Dict[str, float] = defaultdict(float)
+        expense_by_cat: Dict[str, float] = defaultdict(float)
+
+        for t in transactions:
+            if t.transaction_type == TransactionType.INCOME:
+                income_by_cat[t.category] += t.amount
+            else:
+                expense_by_cat[t.category] += t.amount
+
+        # Filter out zero values
+        income_by_cat = {k: v for k, v in income_by_cat.items() if v != 0}
+        expense_by_cat = {k: v for k, v in expense_by_cat.items() if v != 0}
+
+        # Calculate percentages
+        total_income = sum(income_by_cat.values())
+        total_expense = sum(expense_by_cat.values())
+
+        income_pct = {}
+        expense_pct = {}
+
+        if total_income > 0:
+            income_pct = {
+                cat: (amt / total_income) * 100
+                for cat, amt in income_by_cat.items()
+            }
+
+        if total_expense > 0:
+            expense_pct = {
+                cat: (amt / total_expense) * 100
+                for cat, amt in expense_by_cat.items()
+            }
+
+        return {
+            "income_by_cat": income_by_cat,
+            "expense_by_cat": expense_by_cat,
+            "income_pct": income_pct,
+            "expense_pct": expense_pct,
+        }
+
+    @staticmethod
+    def show_balance(
+        wallet: Wallet,
+        transactions: List[Transaction] = None,
+        is_filtered: bool = False,
+    ):
+        """Display the total balance with income/expense breakdown.
+
+        Args:
+            wallet: The wallet to display.
+            transactions: Optional list of transactions to calculate from.
+                         If None, uses wallet totals.
+            is_filtered: Whether the data is filtered (affects label).
+        """
+        if transactions is not None:
+            totals = Display._calculate_totals(transactions)
+            balance = totals["balance"]
+            total_income = totals["total_income"]
+            total_expense = totals["total_expense"]
+        else:
+            balance = wallet.balance
+            total_income = wallet.total_income
+            total_expense = wallet.total_expense
+
+        sign = "+" if balance >= 0 else ""
+        label = "Period Balance" if is_filtered else "Balance"
+        print(f"\n💰 {label}: {sign}{balance:.2f} {wallet.currency}")
+        print(f"   Income:  +{total_income:.2f}")
+        print(f"   Expense: -{total_expense:.2f}")
+
+        # Show overall wallet balance when filtered
+        if is_filtered:
+            overall_sign = "+" if wallet.balance >= 0 else ""
+            print(f"   (Overall: {overall_sign}{wallet.balance:.2f})")
+
+    @staticmethod
+    def show_category_breakdown(
+        wallet: Wallet,
+        transactions: List[Transaction] = None,
+    ):
+        """Display category contributions for income and expenses separately.
+
+        Args:
+            wallet: The wallet (used for context).
+            transactions: Optional list of transactions to calculate from.
+                         If None, uses wallet methods.
+        """
+        if transactions is not None:
+            breakdown = Display._calculate_category_breakdown(transactions)
+            income_by_cat = breakdown["income_by_cat"]
+            expense_by_cat = breakdown["expense_by_cat"]
+            income_pct = breakdown["income_pct"]
+            expense_pct = breakdown["expense_pct"]
+        else:
+            income_by_cat = wallet.get_income_by_category()
+            expense_by_cat = wallet.get_expense_by_category()
+            income_pct = wallet.get_income_percentages()
+            expense_pct = wallet.get_expense_percentages()
 
         if not income_by_cat and not expense_by_cat:
             print("\n📊 No transactions yet")
@@ -61,17 +166,41 @@ class Display:
                 print(f"   {category}: -{amount:.2f} ({pct:.1f}%)")
     
     @staticmethod
-    def show_transactions(wallet: Wallet):
-        """Display all transactions in sorted order."""
-        transactions = wallet.get_sorted_transactions()
+    def show_transactions(wallet: Wallet, use_filter: bool = True):
+        """Display transactions (filtered and sorted).
+
+        Args:
+            wallet: The wallet to display transactions from.
+            use_filter: If True, apply active filters. If False, show all.
+        """
+        filtering_ctx = wallet.filtering_context
+        has_filters = filtering_ctx.has_filters and use_filter
+
+        if has_filters:
+            transactions = wallet.get_filtered_transactions()
+        else:
+            transactions = wallet.get_sorted_transactions()
+
         strategy_name = wallet.sorting_context.current_strategy.name
-        
-        print(f"\n📋 Transactions (Sorted by: {strategy_name}):")
-        
+        total_count = wallet.transaction_count()
+
+        # Build header
+        header = f"\n📋 Transactions (Sorted by: {strategy_name})"
+        if has_filters:
+            header += f" [Filtered: {len(transactions)}/{total_count}]"
+        print(header + ":")
+
+        # Show active filters
+        if has_filters:
+            print(f"   🔍 Filters: {filtering_ctx.filter_summary}")
+
         if not transactions:
-            print("   No transactions")
+            if has_filters:
+                print("   No transactions match current filters")
+            else:
+                print("   No transactions")
             return
-        
+
         for i, t in enumerate(transactions, 1):
             print(f"   {i}. {t}")
     
@@ -84,9 +213,27 @@ class Display:
     @staticmethod
     def show_dashboard(wallet: Wallet):
         """Display the main dashboard."""
-        Display.show_header(f"Budget Planner Dashboard - {wallet.name}")
-        Display.show_balance(wallet)
-        Display.show_category_breakdown(wallet)
+        filtering_ctx = wallet.filtering_context
+        has_filters = filtering_ctx.has_filters
+
+        # Get transactions (filtered or all)
+        if has_filters:
+            transactions = wallet.get_filtered_transactions()
+            header = f"Budget Planner Dashboard - {wallet.name} [FILTERED]"
+        else:
+            transactions = wallet.get_sorted_transactions()
+            header = f"Budget Planner Dashboard - {wallet.name}"
+
+        Display.show_header(header)
+
+        # Show active filters summary at top if filtering
+        if has_filters:
+            print(f"🔍 Active Filters: {filtering_ctx.filter_summary}")
+            print(f"   Showing {len(transactions)} of {wallet.transaction_count()} transactions")
+
+        # Show balance and category breakdown from filtered transactions
+        Display.show_balance(wallet, transactions if has_filters else None, has_filters)
+        Display.show_category_breakdown(wallet, transactions if has_filters else None)
         Display.show_transactions(wallet)
     
     @staticmethod
@@ -101,6 +248,7 @@ class Display:
         print("   edit <N>   - Edit transaction N")
         print("   delete <N> - Delete transaction N")
         print("   sort       - Change sorting method")
+        print("   filter     - Filter transactions")
         print("   percent    - Show category percentages")
         print("+----------- Wallet Commands ------------+")
         print("   wallets              - Show all wallets")
@@ -217,3 +365,55 @@ class Display:
         print("\n🔄 Wallet Sorting Options:")
         for key, name in strategies.items():
             print(f"   {key}. {name}")
+
+    @staticmethod
+    def show_filter_menu():
+        """Display the filter menu options."""
+        print("\n🔍 Filter Options:")
+        print("   1. Filter by Date")
+        print("   2. Filter by Transaction Type")
+        print("   3. Filter by Category")
+        print("   4. Filter by Amount")
+        print("   5. Filter by Description")
+        print("   6. View Active Filters")
+        print("   7. Remove a Filter")
+        print("   8. Clear All Filters")
+        print("   0. Back / Cancel")
+
+    @staticmethod
+    def show_date_filter_options():
+        """Display date filter presets."""
+        presets = FilteringContext.get_date_presets()
+        print("\n📅 Date Filter Options:")
+        for key, name in presets.items():
+            print(f"   {key}. {name}")
+        print("   0. Cancel")
+
+    @staticmethod
+    def show_type_filter_options():
+        """Display transaction type filter options."""
+        presets = FilteringContext.get_type_presets()
+        print("\n📊 Transaction Type Filter Options:")
+        for key, name in presets.items():
+            print(f"   {key}. {name}")
+        print("   0. Cancel")
+
+    @staticmethod
+    def show_amount_filter_options():
+        """Display amount filter presets."""
+        presets = FilteringContext.get_amount_presets()
+        print("\n💵 Amount Filter Options:")
+        for key, name in presets.items():
+            print(f"   {key}. {name}")
+        print("   0. Cancel")
+
+    @staticmethod
+    def show_active_filters(wallet: Wallet):
+        """Display currently active filters."""
+        filters = wallet.filtering_context.active_filters
+        print("\n🔍 Active Filters:")
+        if not filters:
+            print("   No filters active")
+            return
+        for i, f in enumerate(filters, 1):
+            print(f"   {i}. {f.name}: {f.description}")
